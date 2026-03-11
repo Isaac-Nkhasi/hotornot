@@ -29,6 +29,8 @@ export default function Home() {
   const [reaction,    setReaction]        = useState(null);   // { text, winRate }
   const [loading,     setLoading]         = useState(true);
   const [error,       setError]           = useState(null);
+  const [shareCopied, setShareCopied]     = useState(false); // clipboard feedback
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
   const reactionTimer = useRef(null);
 
@@ -61,6 +63,42 @@ export default function Home() {
 
   // ── Flush votes on unmount ────────────────────────────
   useEffect(() => () => { forceFlush(); }, []);
+
+  // ── Share handlers ────────────────────────────────────
+  const shareTimer = useRef(null);
+
+  async function shareSite() {
+    const data = {
+      title: 'HOT or NOT 🔥',
+      text:  'Rate pics and see who tops the leaderboard — come vote!',
+      url:   window.location.origin,
+    };
+    if (navigator.share) {
+      try { await navigator.share(data); } catch (_) {}
+    } else {
+      await copyToClipboard(window.location.origin);
+    }
+    setShowShareMenu(false);
+  }
+
+  async function sharePair() {
+    const text = `🔥 HOT or NOT — who wins this matchup? Come vote: ${window.location.origin}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'HOT or NOT', text, url: window.location.origin }); } catch (_) {}
+    } else {
+      await copyToClipboard(text);
+    }
+    setShowShareMenu(false);
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setShareCopied(true);
+      clearTimeout(shareTimer.current);
+      shareTimer.current = setTimeout(() => setShareCopied(false), 2000);
+    } catch (_) {}
+  }
 
   // ── Handle a vote ─────────────────────────────────────
   const handleVote = useCallback(async (chosenImage) => {
@@ -245,6 +283,71 @@ export default function Home() {
       >
         skip this pair →
       </motion.button>
+
+      {/* Share button + menu */}
+      <div style={{ position: 'relative', marginTop: 12 }}>
+        <motion.button
+          className="skip-btn"
+          onClick={() => setShowShareMenu((v) => !v)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          {shareCopied ? '✅ copied!' : '↗ share'}
+        </motion.button>
+
+        <AnimatePresence>
+          {showShareMenu && (
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.97 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 10px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'var(--card)',
+                border: '1px solid var(--border-hover)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                minWidth: 200,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                zIndex: 50,
+              }}
+            >
+              <button onClick={sharePair} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 16px', borderRadius: 'var(--radius-xs)',
+                color: 'var(--text)', fontFamily: 'var(--font-body)',
+                fontSize: '0.85rem', fontWeight: 500, textAlign: 'left',
+                transition: 'background 0.15s',
+              }}
+                onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.target.style.background = 'none'}
+              >
+                🔥 Share this matchup
+              </button>
+              <button onClick={shareSite} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 16px', borderRadius: 'var(--radius-xs)',
+                color: 'var(--text)', fontFamily: 'var(--font-body)',
+                fontSize: '0.85rem', fontWeight: 500, textAlign: 'left',
+                transition: 'background 0.15s',
+              }}
+                onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={e => e.target.style.background = 'none'}
+              >
+                🌐 Share the site
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Crowd consensus reaction toast */}
       <AnimatePresence>
