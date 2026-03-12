@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { seedImage, getStats } from '../firebase/firestore';
+import { seedImage, getStats, resetAllVotes } from '../firebase/firestore';
 
 // ── Simple PIN gate — change this to whatever you want ──
 const ADMIN_PIN = 'hotornot';
@@ -16,6 +16,9 @@ export default function Seed() {
   const [success,    setSuccess]    = useState(null);
   const [error,      setError]      = useState(null);
   const [stats,      setStats]      = useState(null);
+
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetting,    setResetting]    = useState(false);
 
   // ── PIN check ───────────────────────────────────────
   function handlePinSubmit(e) {
@@ -65,6 +68,27 @@ export default function Seed() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ── Reset all votes ─────────────────────────────────
+  async function handleReset() {
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      return;
+    }
+    setResetting(true);
+    setSuccess(null);
+    setError(null);
+    try {
+      const count = await resetAllVotes();
+      setSuccess(`✅ Reset complete — ${count} images back to 1000 ELO, all votes cleared.`);
+      setResetConfirm(false);
+      loadStats();
+    } catch (err) {
+      setError(`❌ Reset failed: ${err.message}`);
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -188,6 +212,120 @@ export default function Seed() {
         >
           {loading ? 'Adding…' : 'Add to HOT or NOT'}
         </motion.button>
+      </motion.div>
+
+      {/* ── Danger Zone ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+        style={{
+          marginTop: 32,
+          background: 'var(--card)',
+          border: '1px solid rgba(255,23,68,0.2)',
+          borderRadius: 'var(--radius)',
+          padding: 24,
+        }}
+      >
+        <p style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.72rem',
+          color: 'var(--accent)',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          marginBottom: 8,
+        }}>
+          ⚠️ Danger Zone
+        </p>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+          Reset all votes, wins, losses and streaks. Every image goes back to 1000 ELO.
+          This cannot be undone.
+        </p>
+
+        <AnimatePresence mode="wait">
+          {!resetConfirm ? (
+            <motion.button
+              key="reset-init"
+              onClick={handleReset}
+              disabled={resetting}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                background: 'transparent',
+                border: '1px solid rgba(255,23,68,0.4)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--accent)',
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.1rem',
+                letterSpacing: '0.08em',
+                cursor: 'pointer',
+                transition: 'background 0.2s',
+              }}
+              whileHover={{ background: 'rgba(255,23,68,0.08)' }}
+            >
+              Reset All Votes
+            </motion.button>
+          ) : (
+            <motion.div
+              key="reset-confirm"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+            >
+              <p style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.82rem',
+                color: 'var(--text)',
+                textAlign: 'center',
+                padding: '10px',
+                background: 'rgba(255,23,68,0.08)',
+                borderRadius: 'var(--radius-xs)',
+                border: '1px solid rgba(255,23,68,0.25)',
+              }}>
+                You sure? This wipes ALL vote data permanently.
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setResetConfirm(false)}
+                  style={{
+                    flex: 1, padding: '11px',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReset}
+                  disabled={resetting}
+                  style={{
+                    flex: 1, padding: '11px',
+                    background: 'var(--accent)',
+                    border: 'none',
+                    borderRadius: 'var(--radius-sm)',
+                    color: '#fff',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '1rem',
+                    letterSpacing: '0.06em',
+                    cursor: resetting ? 'not-allowed' : 'pointer',
+                    opacity: resetting ? 0.6 : 1,
+                  }}
+                >
+                  {resetting ? 'Resetting…' : 'Yes, Reset Everything'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       <p style={{ marginTop: 20, textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>

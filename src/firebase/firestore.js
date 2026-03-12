@@ -155,6 +155,47 @@ export async function updateStreaks(winnerId, loserId) {
 }
 
 // ─────────────────────────────────────────────────────────
+//  RESET (admin only)
+// ─────────────────────────────────────────────────────────
+
+/**
+ * Resets every image's votes, wins, losses, streak back to 0
+ * and rating back to 1000. Also zeroes out totalVotes in meta/stats.
+ * Processes in batches of 500 (Firestore batch write limit).
+ */
+export async function resetAllVotes() {
+  const snap = await getDocs(collection(db, 'images'));
+  if (snap.empty) return 0;
+
+  const docs   = snap.docs;
+  const CHUNK  = 499; // stay under 500 limit
+  let   count  = 0;
+
+  for (let i = 0; i < docs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    const chunk = docs.slice(i, i + CHUNK);
+
+    chunk.forEach((d) => {
+      batch.update(d.ref, {
+        rating: 1000,
+        wins:   0,
+        losses: 0,
+        votes:  0,
+        streak: 0,
+      });
+      count++;
+    });
+
+    await batch.commit();
+  }
+
+  // Reset global vote counter
+  await updateDoc(doc(db, 'meta', 'stats'), { totalVotes: 0 });
+
+  return count;
+}
+
+// ─────────────────────────────────────────────────────────
 //  LEADERBOARD  —  simple sorted query
 // ─────────────────────────────────────────────────────────
 
