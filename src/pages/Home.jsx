@@ -156,7 +156,9 @@ export default function Home() {
     const currentPairKey = pairKey(chosenImage.id, other.id);
     incrementPairVotes(currentPairKey).catch(console.error);
     setActivePairKey(currentPairKey);
-    setShowComments(true);
+
+    // Show comments after the vote animation settles
+    setTimeout(() => setShowComments(true), VOTE_ANIM_MS);
 
     // ── Crowd-consensus reaction toast ───────────────
     const totalVotes = chosenImage.wins + chosenImage.losses + 1;
@@ -172,8 +174,7 @@ export default function Home() {
     clearTimeout(reactionTimer.current);
     reactionTimer.current = setTimeout(() => setReaction(null), REACTION_MS);
 
-    // ── Advance to next pair after animation ──────────
-    setTimeout(() => advanceToNext(), VOTE_ANIM_MS);
+    // NO auto-advance — user taps "Next →" after reacting
   }, [voteState, displayPair]); // eslint-disable-line
 
   function advanceToNext() {
@@ -297,17 +298,34 @@ export default function Home() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Skip */}
-      <motion.button
-        className="skip-btn"
-        onClick={handleSkip}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: voteState === 'idle' ? 1 : 0 }}
-        transition={{ duration: 0.2 }}
-        disabled={voteState !== 'idle'}
-      >
-        skip this pair →
-      </motion.button>
+      {/* Skip (pre-vote) / Next (post-vote) */}
+      <AnimatePresence mode="wait">
+        {voteState === 'idle' ? (
+          <motion.button
+            key="skip"
+            className="skip-btn"
+            onClick={handleSkip}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            skip this pair →
+          </motion.button>
+        ) : (
+          <motion.button
+            key="next"
+            className="next-btn"
+            onClick={advanceToNext}
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0,  scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, delay: 0.85, ease: [0.16, 1, 0.3, 1] }}
+          >
+            Next pair →
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Share button + menu */}
       <div style={{ position: 'relative', marginTop: 12 }}>
