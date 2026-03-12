@@ -4,7 +4,14 @@ import ImageCard from '../components/ImageCard';
 import { getRandomPair, updateStreaks } from '../firebase/firestore';
 import { calculateNewRatings } from '../utils/eloRating';
 import { enqueueVote, forceFlush } from '../utils/voteQueue';
-import { pairKey, hasVotedPair, markPairVoted } from '../utils/sessionVotes';
+import {
+  initMatchHistory,
+  hasSeenPair,
+  recordPairSeen,
+  forceFlushHistory,
+  pairKey,
+  seenCount,
+} from '../utils/matchHistory';
 
 // How long (ms) the win/loss animation plays before next pair appears
 const VOTE_ANIM_MS = 900;
@@ -37,7 +44,9 @@ export default function Home() {
   // ── Fetch a pair and optionally cache it as "next" ────
   const fetchPair = useCallback(async (asNext = false) => {
     try {
-      const pair = await getRandomPair();
+      // Pass a Set-compatible proxy backed by matchHistory's in-memory Set
+      const seenProxy = { has: hasSeenPair, size: seenCount() };
+      const pair = await getRandomPair(seenProxy);
       if (asNext) {
         setNextPair(pair);
         preload(pair);
@@ -55,14 +64,15 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       setLoading(true);
+      await initMatchHistory();   // load Firestore history into memory first
       await fetchPair(false);
       setLoading(false);
       fetchPair(true); // prefetch next pair in background
     })();
   }, [fetchPair]);
 
-  // ── Flush votes on unmount ────────────────────────────
-  useEffect(() => () => { forceFlush(); }, []);
+  // ── Flush votes + history on unmount ─────────────────
+  useEffect(() => () => { forceFlush(); forceFlushHistory(); }, []);
 
   // ── Share handlers ────────────────────────────────────
   const shareTimer = useRef(null);
@@ -109,12 +119,12 @@ export default function Home() {
 
     // ── Spam guard ────────────────────────────────────
     const key = pairKey(chosenImage.id, other.id);
-    if (hasVotedPair(key)) {
+    if (hasSeenPair(key)) {
       // Skip to next pair silently
       advanceToNext();
       return;
     }
-    markPairVoted(key);
+    recordPairSeen(key);
 
     // ── ELO calculation ───────────────────────────────
     const { newWinnerRating, newLoserRating, winnerDelta, loserDelta } =
@@ -176,8 +186,12 @@ export default function Home() {
   // ── Skip pair ─────────────────────────────────────────
   const handleSkip = useCallback(() => {
     if (voteState !== 'idle') return;
+    // Record this pair as seen so it won't resurface
+    if (displayPair) {
+      recordPairSeen(pairKey(displayPair[0].id, displayPair[1].id));
+    }
     advanceToNext();
-  }, [voteState, nextPair]); // eslint-disable-line
+  }, [voteState, nextPair, displayPair]); // eslint-disable-line
 
   // ── Render ────────────────────────────────────────────
   if (loading) {

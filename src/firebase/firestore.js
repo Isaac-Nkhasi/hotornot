@@ -43,21 +43,32 @@ export async function getStats() {
 /**
  * Fetches two different random images using index fields.
  * O(1) — never scans the whole collection.
+ *
+ * @param {Set<string>} seenPairs  — Set of pair keys already seen this session
+ * @param {number}      attempt    — internal retry counter (do not pass manually)
  */
-export async function getRandomPair(excludePairKey = null) {
+export async function getRandomPair(seenPairs = new Set(), attempt = 0) {
   const stats = await getStats();
   const total = stats.totalImages || 0;
 
   if (total < 2) return null;
 
+  // How many possible unique pairs exist?
+  const maxUniquePairs = (total * (total - 1)) / 2;
+  // If user has seen most/all pairs, reset gracefully rather than infinite-loop
+  const exhausted = seenPairs.size >= maxUniquePairs * 0.9;
+
+  // Cap retries: after 8 attempts just return whatever we find
+  const MAX_ATTEMPTS = 8;
+
   // Pick two distinct random indices
   let idx1 = Math.floor(Math.random() * total);
   let idx2;
-  let attempts = 0;
+  let picks = 0;
   do {
     idx2 = Math.floor(Math.random() * total);
-    attempts++;
-  } while (idx2 === idx1 && attempts < 20);
+    picks++;
+  } while (idx2 === idx1 && picks < 20);
 
   // Fetch both in parallel
   const [snap1, snap2] = await Promise.all([
@@ -70,13 +81,14 @@ export async function getRandomPair(excludePairKey = null) {
   const img1 = { id: snap1.docs[0].id, ...snap1.docs[0].data() };
   const img2 = { id: snap2.docs[0].id, ...snap2.docs[0].data() };
 
-  // Shouldn't happen, but guard against same doc
+  // Guard against same doc
   if (img1.id === img2.id) return null;
 
-  // If this pair was recently voted, try a fresh pull (simple check)
-  const pairKey = [img1.id, img2.id].sort().join('_');
-  if (pairKey === excludePairKey) {
-    return getRandomPair(null); // one retry, no infinite loop
+  const key = [img1.id, img2.id].sort().join('_');
+
+  // If this pair was seen before, retry — unless exhausted or max retries hit
+  if (seenPairs.has(key) && !exhausted && attempt < MAX_ATTEMPTS) {
+    return getRandomPair(seenPairs, attempt + 1);
   }
 
   return [img1, img2];
