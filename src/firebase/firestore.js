@@ -155,6 +155,84 @@ export async function updateStreaks(winnerId, loserId) {
 }
 
 // ─────────────────────────────────────────────────────────
+//  PAIR COMMENTS & REACTIONS
+// ─────────────────────────────────────────────────────────
+
+const MAX_COMMENTS = 40; // cap stored per pair
+
+/**
+ * Increment the vote count on a pair doc.
+ * Called alongside the regular vote flow.
+ */
+export async function incrementPairVotes(pairKey) {
+  const ref = doc(db, 'pair_comments', pairKey);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    await updateDoc(ref, { pairVotes: increment(1) });
+  } else {
+    await setDoc(ref, { pairVotes: 1, totalReactions: 0, comments: [] });
+  }
+}
+
+/**
+ * Fetch comments + meta for a pair.
+ * Returns null if pairVotes <= 5 (not enough heat yet).
+ */
+export async function getPairComments(pairKey) {
+  const snap = await getDoc(doc(db, 'pair_comments', pairKey));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  if ((data.pairVotes || 0) <= 5) return null;
+  return {
+    pairVotes:      data.pairVotes      || 0,
+    totalReactions: data.totalReactions || 0,
+    comments:       data.comments       || [],
+  };
+}
+
+/**
+ * Add a text comment to a pair.
+ * Keeps only the latest MAX_COMMENTS entries.
+ */
+export async function addPairComment(pairKey, text, uid) {
+  const ref     = doc(db, 'pair_comments', pairKey);
+  const snap    = await getDoc(ref);
+  const existing = snap.exists() ? (snap.data().comments || []) : [];
+
+  const newComment = { text, uid, createdAt: Date.now() };
+  const updated   = [...existing, newComment].slice(-MAX_COMMENTS);
+
+  if (snap.exists()) {
+    await updateDoc(ref, { comments: updated });
+  } else {
+    await setDoc(ref, { pairVotes: 0, totalReactions: 0, comments: updated });
+  }
+}
+
+/**
+ * Add a reaction (emoji) to a pair.
+ */
+export async function addPairReaction(pairKey, emoji, uid) {
+  const ref  = doc(db, 'pair_comments', pairKey);
+  const snap = await getDoc(ref);
+  const existing = snap.exists() ? (snap.data().reactions || []) : [];
+
+  const newReaction = { emoji, uid, createdAt: Date.now() };
+  const updated     = [...existing, newReaction].slice(-MAX_COMMENTS);
+
+  if (snap.exists()) {
+    await updateDoc(ref, {
+      totalReactions: increment(1),
+      reactions:      updated,
+    });
+  } else {
+    await setDoc(ref, {
+      pairVotes: 0, totalReactions: 1, comments: [], reactions: updated,
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────
 //  RESET (admin only)
 // ─────────────────────────────────────────────────────────
 

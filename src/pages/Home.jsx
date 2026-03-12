@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import ImageCard from '../components/ImageCard';
-import { getRandomPair, updateStreaks } from '../firebase/firestore';
+import CommentOverlay from '../components/CommentOverlay';
+import { getRandomPair, updateStreaks, incrementPairVotes } from '../firebase/firestore';
+import { auth } from '../firebase/firebaseConfig';
 import { calculateNewRatings } from '../utils/eloRating';
 import { enqueueVote, forceFlush } from '../utils/voteQueue';
 import {
@@ -38,6 +40,8 @@ export default function Home() {
   const [error,       setError]           = useState(null);
   const [shareCopied, setShareCopied]     = useState(false); // clipboard feedback
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [activePairKey, setActivePairKey] = useState(null);  // for comment overlay
+  const [showComments,  setShowComments]  = useState(false);
 
   const reactionTimer = useRef(null);
 
@@ -148,6 +152,12 @@ export default function Home() {
     // ── Streak update (immediate, separate write) ─────
     updateStreaks(chosenImage.id, other.id).catch(console.error);
 
+    // ── Increment pair vote count for comments ────────
+    const currentPairKey = pairKey(chosenImage.id, other.id);
+    incrementPairVotes(currentPairKey).catch(console.error);
+    setActivePairKey(currentPairKey);
+    setShowComments(true);
+
     // ── Crowd-consensus reaction toast ───────────────
     const totalVotes = chosenImage.wins + chosenImage.losses + 1;
     const newWins    = chosenImage.wins + 1;
@@ -169,6 +179,7 @@ export default function Home() {
   function advanceToNext() {
     setVoteState('idle');
     setVoteResult(null);
+    setShowComments(false);
 
     if (nextPair) {
       setDisplayPair(nextPair);
@@ -381,6 +392,13 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Community comments + reactions */}
+      <CommentOverlay
+        pairKey={activePairKey}
+        uid={auth.currentUser?.uid || 'anon'}
+        visible={showComments && !!activePairKey}
+      />
     </div>
   );
 }
